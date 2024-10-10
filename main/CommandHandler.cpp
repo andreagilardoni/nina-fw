@@ -2070,6 +2070,387 @@ int socket_getpeername(const uint8_t command[], uint8_t response[])
   return 14;
 }
 
+/*
+ * Preferences API
+ */
+#include "Preferences.h"
+
+uint8_t sizes[] = {1, 1, 2, 2, 4, 4, 8, 8, 0, 0, 0}; // FIXME rename me
+
+Preferences preferences;
+
+int pref_begin(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+  //[2]         N args                      < 1 byte >
+  //[3]         store_name size             < 1 byte >
+  //[4..n]      store_name                  < n byte >
+  //[n+1]       readonly                    < 1 byte >
+  //[n+2]       partition label size        < 1 byte >
+  //[n+3..n+m]  partition label             < m byte >
+
+  uint8_t nargs = command[2];
+  char store_name[32]; // TODO define maximum length
+  char partition_label[32]; // TODO define maximum length
+  const uint8_t* partition_label_ptr = nullptr;
+  bool readonly=false;
+
+  // command_ptr points to the next argument, in this case
+  // it points to the length of store_name string
+  const uint8_t* command_ptr = &command[3];
+
+  if(nargs < 1 && nargs > 3) {
+    // TODO error
+  }
+
+  memset(store_name, 0x00, sizeof(store_name));
+  memcpy(store_name, command_ptr+1, *command_ptr);
+  store_name[*command_ptr] = '\0';
+
+  // move the pointer to the next argument, by adding the length
+  // of store_name string
+  command_ptr += *command_ptr + 1;
+
+  if(nargs > 1) {
+    readonly = *command_ptr;
+    command_ptr++;
+  }
+
+  if(nargs > 2) {
+    memset(partition_label, 0x00, sizeof(partition_label));
+    memcpy(partition_label, command_ptr+1, *command_ptr);
+    partition_label[*command_ptr] = '\0';
+
+    partition_label_ptr = command_ptr;
+  }
+
+  response[2] = 1;          // number of parameters
+  // result of Preferences begin operation
+  response[3] = preferences.begin(store_name, readonly, (char*)partition_label_ptr);
+
+  // response has to start ad position 2, and has to take into account
+  // 0xee that is put after the function being called
+  return 5;
+}
+
+int pref_end(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+
+  preferences.clear();
+
+  return 0;
+}
+
+int pref_clear(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+
+  response[2] = 1;                   // number of parameters
+  response[3] = preferences.clear(); // result of Preferences clear operation
+
+  // response has to start ad position 2, and has to take into account
+  // 0xee that is put after the function being called
+  return 5;
+}
+
+int pref_remove(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+  //[2]         N args                      < 1 byte >
+  //[3]         key size                    < 1 byte >
+  //[4..n]      key                         < n byte >
+
+  uint8_t nargs = command[2];
+  char key[32]; // TODO define maximum length
+
+  // command_ptr points to the next argument, in this case
+  // it points to the length of key string
+  const uint8_t* command_ptr = &command[3];
+
+  if(nargs != 1) {
+    // TODO error
+  }
+
+  memset(key, 0x00, sizeof(key));
+  memcpy(key, command_ptr+1, *command_ptr);
+  key[*command_ptr] = '\0';
+
+  response[2] = 1;                 // number of parameters
+  response[3] = preferences.remove(key); // result of Preferences end operation
+
+  // response has to start ad position 2, and has to take into account
+  // 0xee that is put after the function being called
+  return 5;
+}
+
+int pref_len(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+  //[2]         N args                      < 1 byte >
+  //[3]         key size                    < 1 byte >
+  //[4..n]      key                         < n byte >
+
+  uint8_t nargs = command[2];
+  char key[32]; // TODO define maximum length
+
+  // command_ptr points to the next argument, in this case
+  // it points to the length of key string
+  const uint8_t* command_ptr = &command[3];
+
+  // restricting the return as 32 bit integer as it is enough
+  uint32_t len = 0;
+
+  if(nargs != 1) {
+    // TODO error
+  }
+
+  memset(key, 0x00, sizeof(key));
+  memcpy(key, command_ptr+1, *command_ptr);
+  key[*command_ptr] = '\0';
+
+  len = preferences.getBytesLength(key);
+
+  response[2] = 1;
+
+  // write the result in big endian into the response buffer
+  response[3] = (len >> 24) & 0xff;
+  response[4] = (len >> 16) & 0xff;
+  response[5] = (len >> 8)  & 0xff;
+  response[6] = (len >> 0)  & 0xff;
+
+  return 8;
+}
+
+int pref_stat(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+
+  // restricting the return as 32 bit integer as it is enough
+  uint32_t res = 0;
+
+  res = preferences.freeEntries();
+
+  response[2] = 1;
+
+  // write the result in big endian into the response buffer
+  response[3] = (res >> 24) & 0xff;
+  response[4] = (res >> 16) & 0xff;
+  response[5] = (res >> 8)  & 0xff;
+  response[6] = (res >> 0)  & 0xff;
+
+  return 8;
+}
+
+int pref_put(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+  //[2]         N args                      < 1 byte >
+  //[3]         key size                    < 1 byte >
+  //[4..n]      key                         < n byte >
+  //[n]         type                        < 1 byte >
+  //[n+1]       len[optional]               < 1 byte >
+  //[n+2..sizeof(type)]                     < sizeof(type)
+  //            value                         or len byte >
+
+  uint8_t nargs = command[2];
+  char key[32]; // TODO define maximum length
+  uint8_t len;
+  uint64_t value=0;
+
+  // command_ptr points to the next argument, in this case
+  // it points to the length of key string
+  const uint8_t* command_ptr = &command[3];
+
+  // restricting the return as 32 bit integer as it is enough
+  uint32_t res = 0;
+
+  if(nargs != 2 && nargs != 3) { // TODO use both nargs and preference type
+    // TODO error
+  }
+
+  memset(key, 0x00, sizeof(key));
+  memcpy(key, command_ptr+1, *command_ptr);
+  key[*command_ptr] = '\0';
+
+  // next argument
+  command_ptr += *command_ptr + 1;
+
+  if(*command_ptr >= PT_INVALID) { // TODO use both nargs and preference type
+    // TODO error
+  }
+
+  // TODO is it better to define another enum, or just use the Preferences provided one?
+  // float and double are not defined there
+  PreferenceType type = (PreferenceType)*command_ptr++; // FIXME proper cast // FIXME is ++operator executed after?
+
+  if(nargs == 3) {
+    // extract length
+    len = *command_ptr;
+    command_ptr++;
+  } else {
+    len = sizes[type];
+  }
+
+  // extract value convert from bigendian
+  for(uint8_t i=0; i<len; i++) {
+    value |= (command_ptr[i] << ((len-i-1) << 3));
+  }
+
+  switch(type) {
+    case PT_I8:
+      res = preferences.putChar(key, value);
+      break;
+    case PT_U8:
+      res = preferences.putUChar(key, value);
+      break;
+    case PT_I16:
+      res = preferences.putShort(key, value);
+      break;
+    case PT_U16:
+      res = preferences.putUShort(key, value);
+      break;
+    case PT_I32:
+      res = preferences.putInt(key, value);
+      break;
+    case PT_U32:
+      res = preferences.putUInt(key, value);
+      break;
+    case PT_I64:
+      res = preferences.putLong64(key, value);
+      break;
+    case PT_U64:
+      res = preferences.putULong64(key, value);
+      break;
+    case PT_STR:
+      // FIXME is the string null terminated? teoretically, command is 0 filled
+      res = preferences.putString(key, (const char*)command_ptr);
+      break;
+    case PT_BLOB:
+      res = preferences.putBytes(key, command_ptr, len);
+      break;
+    case PT_INVALID:
+    default:
+      // TODO error
+      break;
+  }
+
+  response[2] = 1; // response nargs
+
+  response[3] = (res >> 24) & 0xff;
+  response[4] = (res >> 16) & 0xff;
+  response[5] = (res >> 8)  & 0xff;
+  response[6] = (res >> 0)  & 0xff;
+
+  return 8;
+}
+
+int pref_get(const uint8_t command[], uint8_t response[])
+{
+  //[0]         CMD_START                   < 0xE0   >
+  //[1]         Command                     < 1 byte >
+  //[2]         N args                      < 1 byte >
+  //[3]         key size                    < 1 byte >
+  //[4..n]      key                         < n byte >
+  //[n]         type                        < 1 byte >
+
+  uint8_t nargs = command[2];
+  char key[32]; // TODO define maximum length
+
+  // command_ptr points to the next argument, in this case
+  // it points to the length of key string
+  const uint8_t* command_ptr = &command[3];
+
+  // restricting the return as 32 bit integer as it is enough
+  uint32_t res_size = 0;
+
+  // all the kind of values can fit in a 64 bit integer
+  uint64_t res=0;
+
+  if(nargs != 2) { // TODO use both nargs and preference type
+    // TODO error
+  }
+
+  memset(key, 0x00, sizeof(key));
+  memcpy(key, command_ptr+1, *command_ptr);
+  key[*command_ptr] = '\0';
+
+  // next argument
+  command_ptr += *command_ptr + 1;
+
+  if(*command_ptr >= PT_INVALID) { // TODO use both nargs and preference type
+    // TODO error
+  }
+
+  // TODO is it better to define another enum, or just use the Preferences provided one?
+  // float and double are not defined there
+  PreferenceType type = (PreferenceType)*command_ptr++; // FIXME proper cast // FIXME is ++operator executed after?
+
+  switch(type) {
+    case PT_I8:
+      res = preferences.getChar(key);
+      break;
+    case PT_U8:
+      res = preferences.getUChar(key);
+      break;
+    case PT_I16:
+      res = preferences.getShort(key);
+      break;
+    case PT_U16:
+      res = preferences.getUShort(key);
+      break;
+    case PT_I32:
+      res = preferences.getInt(key);
+      break;
+    case PT_U32:
+      res = preferences.getUInt(key);
+      break;
+    case PT_I64:
+      res = preferences.getLong64(key);
+      break;
+    case PT_U64:
+      res = preferences.getULong64(key);
+      break;
+    case PT_STR:
+      res_size = preferences.getString(key, (char*) &response[7], SPI_MAX_DMA_LEN - 8); // FIXME get the max available size in the buffer
+      goto array_return;
+    case PT_BLOB:
+      res_size = preferences.getBytes(key, &response[7], SPI_MAX_DMA_LEN - 8); // FIXME get the max available size in the buffer
+      goto array_return;
+    case PT_INVALID:
+    default:
+      // TODO error
+      break;
+  }
+
+  // fill the response buffer
+  response[2] = 1; // response nargs
+
+  for(uint8_t i=0; i<sizes[type]; i++) {
+    response[i] = (res >> ((sizes[type]-i-1) << 3)) & 0xff;
+  }
+
+  return sizes[type] + 4;
+
+array_return:
+  response[2] = 2;
+
+  // case for array of bytes
+  response[3] = (res_size >> 24) & 0xff;
+  response[4] = (res_size >> 16) & 0xff;
+  response[5] = (res_size >> 8)  & 0xff;
+  response[6] = (res_size >> 0)  & 0xff;
+
+  return 8 + res_size;
+}
+
 typedef int (*CommandHandlerType)(const uint8_t command[], uint8_t response[]);
 
 const CommandHandlerType commandHandlers[] = {
@@ -2112,6 +2493,16 @@ const CommandHandlerType commandHandlers[] = {
   socket_setsockopt,    // 0x7D
   socket_getsockopt,    // 0x7E
   socket_getpeername,   // 0x7F
+
+  // KVStore functions 0x80 -> 0x87
+  pref_begin,       // 0x80
+  pref_end,         // 0x81
+  pref_clear,       // 0x82
+  pref_remove,      // 0x83
+  pref_len,         // 0x84
+  pref_stat,        // 0x85
+  pref_put,         // 0x86
+  pref_get,         // 0x87
 };
 #define NUM_COMMAND_HANDLERS (sizeof(commandHandlers) / sizeof(commandHandlers[0]))
 
