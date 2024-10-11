@@ -2081,6 +2081,7 @@ Preferences preferences;
 
 int pref_begin(const uint8_t command[], uint8_t response[])
 {
+
   //[0]         CMD_START                   < 0xE0   >
   //[1]         Command                     < 1 byte >
   //[2]         N args                      < 1 byte >
@@ -2113,6 +2114,7 @@ int pref_begin(const uint8_t command[], uint8_t response[])
   command_ptr += *command_ptr + 1;
 
   if(nargs > 1) {
+    command_ptr++; // the first byte contains the length (that is 1) of the next byte
     readonly = *command_ptr;
     command_ptr++;
   }
@@ -2139,7 +2141,7 @@ int pref_end(const uint8_t command[], uint8_t response[])
   //[0]         CMD_START                   < 0xE0   >
   //[1]         Command                     < 1 byte >
 
-  preferences.clear();
+  preferences.end();
 
   return 0;
 }
@@ -2219,12 +2221,13 @@ int pref_len(const uint8_t command[], uint8_t response[])
   response[2] = 1;
 
   // write the result in big endian into the response buffer
-  response[3] = (len >> 24) & 0xff;
-  response[4] = (len >> 16) & 0xff;
-  response[5] = (len >> 8)  & 0xff;
-  response[6] = (len >> 0)  & 0xff;
+  response[3] = 4;
+  response[4] = (len >> 24) & 0xff;
+  response[5] = (len >> 16) & 0xff;
+  response[6] = (len >> 8)  & 0xff;
+  response[7] = (len >> 0)  & 0xff;
 
-  return 8;
+  return 9;
 }
 
 int pref_stat(const uint8_t command[], uint8_t response[])
@@ -2240,12 +2243,13 @@ int pref_stat(const uint8_t command[], uint8_t response[])
   response[2] = 1;
 
   // write the result in big endian into the response buffer
-  response[3] = (res >> 24) & 0xff;
-  response[4] = (res >> 16) & 0xff;
-  response[5] = (res >> 8)  & 0xff;
-  response[6] = (res >> 0)  & 0xff;
+  response[3] = 4;
+  response[4] = (res >> 24) & 0xff;
+  response[5] = (res >> 16) & 0xff;
+  response[6] = (res >> 8)  & 0xff;
+  response[7] = (res >> 0)  & 0xff;
 
-  return 8;
+  return 9;
 }
 
 int pref_put(const uint8_t command[], uint8_t response[])
@@ -2344,12 +2348,13 @@ int pref_put(const uint8_t command[], uint8_t response[])
 
   response[2] = 1; // response nargs
 
-  response[3] = (res >> 24) & 0xff;
-  response[4] = (res >> 16) & 0xff;
-  response[5] = (res >> 8)  & 0xff;
-  response[6] = (res >> 0)  & 0xff;
+  response[3] = 4;
+  response[4] = (res >> 24) & 0xff;
+  response[5] = (res >> 16) & 0xff;
+  response[6] = (res >> 8)  & 0xff;
+  response[7] = (res >> 0)  & 0xff;
 
-  return 8;
+  return 9;
 }
 
 int pref_get(const uint8_t command[], uint8_t response[])
@@ -2431,24 +2436,23 @@ int pref_get(const uint8_t command[], uint8_t response[])
   }
 
   // fill the response buffer
-  response[2] = 1; // response nargs
-
-  for(uint8_t i=0; i<sizes[type]; i++) {
-    response[i] = (res >> ((sizes[type]-i-1) << 3)) & 0xff;
+  res_size = sizes[type];
+  for(uint8_t i=0; i<res_size; i++) {
+    response[7+i] = (res >> ((res_size-i-1) << 3)) & 0xff;
   }
-
-  return sizes[type] + 4;
 
 array_return:
   response[2] = 2;
 
   // case for array of bytes
-  response[3] = (res_size >> 24) & 0xff;
-  response[4] = (res_size >> 16) & 0xff;
-  response[5] = (res_size >> 8)  & 0xff;
-  response[6] = (res_size >> 0)  & 0xff;
+  response[3] = 4;
 
-  return 8 + res_size;
+  response[4] = (res_size >> 24) & 0xff;
+  response[5] = (res_size >> 16) & 0xff;
+  response[6] = (res_size >> 8)  & 0xff;
+  response[7] = (res_size >> 0)  & 0xff;
+
+  return 9 + res_size;
 }
 
 typedef int (*CommandHandlerType)(const uint8_t command[], uint8_t response[]);
@@ -2469,8 +2473,19 @@ const CommandHandlerType commandHandlers[] = {
   // 0x40 -> 0x4f
   setEnt, NULL, NULL, NULL, sendDataTcp, getDataBufTcp, insertDataBuf, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 
-  // 0x50 -> 0x5f
-  setPinMode, setDigitalWrite, setAnalogWrite, getDigitalRead, getAnalogRead, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+  // 0x50 -> 0x54
+  setPinMode, setDigitalWrite, setAnalogWrite, getDigitalRead, getAnalogRead,
+
+  // KVStore functions 0x55 -> 0x87
+  pref_begin,       // 0x55
+  pref_end,         // 0x56
+  pref_clear,       // 0x57
+  pref_remove,      // 0x58
+  pref_len,         // 0x59
+  pref_stat,        // 0x5A
+  pref_put,         // 0x5B
+  pref_get,         // 0x5C
+  NULL, NULL, NULL,
 
   // 0x60 -> 0x6f
   writeFile, readFile, deleteFile, existsFile, downloadFile,  applyOTA, renameFile, downloadOTA, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
@@ -2493,16 +2508,6 @@ const CommandHandlerType commandHandlers[] = {
   socket_setsockopt,    // 0x7D
   socket_getsockopt,    // 0x7E
   socket_getpeername,   // 0x7F
-
-  // KVStore functions 0x80 -> 0x87
-  pref_begin,       // 0x80
-  pref_end,         // 0x81
-  pref_clear,       // 0x82
-  pref_remove,      // 0x83
-  pref_len,         // 0x84
-  pref_stat,        // 0x85
-  pref_put,         // 0x86
-  pref_get,         // 0x87
 };
 #define NUM_COMMAND_HANDLERS (sizeof(commandHandlers) / sizeof(commandHandlers[0]))
 
