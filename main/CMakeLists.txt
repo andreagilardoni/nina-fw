@@ -3,7 +3,7 @@ idf_component_register(
                     "CommandHandler.cpp"
                     "CryptoUtil.cpp"
                     "ECCX08Cert.cpp"
-                    "Preferences.cpp"
+                    # "Preferences.cpp"
                     "sketch.ino.cpp"
     INCLUDE_DIRS    "."
     )

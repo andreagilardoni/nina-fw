@@ -309,7 +309,7 @@ idf_component_register(
                     "libraries/ArduinoBearSSL/src/utility/eccX08_vrfy_asn1.cpp"
 
                     "libraries/ArduinoECCX08/src/ECCX08.cpp"
-                    
+
                     "libraries/ArduinoECCX08/src/utility/ASN1Utils.cpp"
                     "libraries/ArduinoECCX08/src/utility/ECCX08CSR.cpp"
                     "libraries/ArduinoECCX08/src/utility/ECCX08JWS.cpp"
@@ -318,7 +318,7 @@ idf_component_register(
                     "libraries/ArduinoECCX08/src/utility/sha1.c"
 
                     "libraries/SPIS/src/SPIS.cpp"
-                    
+
                     "libraries/WiFi/src/WiFiClient.cpp"
                     "libraries/WiFi/src/WiFi.cpp"
                     "libraries/WiFi/src/WiFiServer.cpp"
@@ -327,20 +327,17 @@ idf_component_register(
 
                     "libraries/Wire/src/Wire.cpp"
 
-    INCLUDE_DIRS    "cores/esp32/"
+    INCLUDE_DIRS    cores/esp32
+                    libraries/SPIS/src
+                    libraries/WiFi/src
+                    libraries/Wire/src
+                    libraries/ArduinoECCX08/src
+                    libraries/ArduinoBearSSL/src
 
-                    "libraries/ArduinoBearSSL/src/"
-                    # "libraries/ArduinoBearSSL/src/bearssl/"
-                    # "libraries/ArduinoBearSSL/src/utility/"
-
-                    "libraries/ArduinoECCX08/src/"
-                    # "libraries/ArduinoECCX08/src/utility/"
-                    "libraries/SPIS/src/"
-                    "libraries/WiFi/src/"
-                    "libraries/Wire/src/"
-    REQUIRES        esp_driver_gpio
+    REQUIRES        # esp_driver_gpio
                     nvs_flash
-                    esp_driver_ledc
+                    # esp_driver_ledc
                     driver
                     mbedtls
+                    wpa_supplicant
     )
