@@ -1,13 +1,9 @@
-file(GLOB all_SRCS
-        *.cpp
-        *.c
-        )
-
-include(CMakePrintHelpers)
-cmake_print_variables(CMAKE_CURRENT_SOURCE_DIR)
-
-
 idf_component_register(
-    SRCS            ${all_SRCS}
+    SRCS            "http_client.c"
+                    "CommandHandler.cpp"
+                    "CryptoUtil.cpp"
+                    "ECCX08Cert.cpp"
+                    "Preferences.cpp"
+                    "sketch.ino.cpp"
     INCLUDE_DIRS    "."
     )
