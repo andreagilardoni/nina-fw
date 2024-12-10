@@ -328,18 +328,19 @@ idf_component_register(
                     "libraries/Wire/src/Wire.cpp"
 
     INCLUDE_DIRS    "cores/esp32/"
-                    "libraries/ArduinoBearSSL"
 
                     "libraries/ArduinoBearSSL/src/"
-                    "libraries/ArduinoBearSSL/src/bearssl/"
-                    "libraries/ArduinoBearSSL/src/utility/"
+                    # "libraries/ArduinoBearSSL/src/bearssl/"
+                    # "libraries/ArduinoBearSSL/src/utility/"
 
                     "libraries/ArduinoECCX08/src/"
-                    "libraries/ArduinoECCX08/src/utility/"
-                    "libraries/SPIS/"
+                    # "libraries/ArduinoECCX08/src/utility/"
                     "libraries/SPIS/src/"
-                    "libraries/WiFi/"
                     "libraries/WiFi/src/"
-                    "libraries/Wire/"
                     "libraries/Wire/src/"
+    REQUIRES        esp_driver_gpio
+                    nvs_flash
+                    esp_driver_ledc
+                    driver
+                    mbedtls
     )
