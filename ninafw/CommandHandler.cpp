@@ -17,14 +17,18 @@
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include <lwip/sockets.h>
-#include <driver/spi_common.h>
-
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WiFiServer.h>
-#include <WiFiSSLClient.h>
-#include <WiFiUdp.h>
+#include <WiFiClientSecure.h>
+#include <WiFiUdp.h> // before lwip RE: https://github.com/espressif/arduino-esp32/issues/4405
+#include <lwip/sockets.h>
+#include <lwip/priv/sockets_priv.h>
+
+#include <driver/spi_common.h>
+#include <driver/adc_deprecated.h>
+
 
 #include "CommandHandler.h"
 
@@ -41,16 +45,16 @@
 int errno;
 #endif
 
-const char FIRMWARE_VERSION[6] = "1.5.0";
+const char FIRMWARE_VERSION[6] = "1.6.0";
 
-/*IPAddress*/uint32_t resolvedHostname;
+IPAddress resolvedHostname;
 
 #define MAX_SOCKETS CONFIG_LWIP_MAX_SOCKETS
 
 uint8_t socketTypes[MAX_SOCKETS];
 WiFiClient tcpClients[MAX_SOCKETS];
 WiFiUDP udps[MAX_SOCKETS];
-WiFiSSLClient tlsClients[MAX_SOCKETS];
+WiFiClientSecure tlsClients[MAX_SOCKETS];
 WiFiServer tcpServers[MAX_SOCKETS];
 
 WiFiClient bearssl_tcp_client;
@@ -138,7 +142,7 @@ int setDNSconfig(const uint8_t command[], uint8_t response[])
   memcpy(&dns1, &command[6], sizeof(dns1));
   memcpy(&dns2, &command[11], sizeof(dns2));
 
-  WiFi.setDNS(dns1, dns2);
+  // WiFi.setDNS(dns1, dns2); // FIXME
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -167,10 +171,10 @@ int setPowerMode(const uint8_t command[], uint8_t response[])
 {
   if (command[4]) {
     // low power
-    WiFi.lowPowerMode();
+    // WiFi.lowPowerMode();  // FIXME
   } else {
     // no low power
-    WiFi.noLowPowerMode();
+    // WiFi.noLowPowerMode(); // FIXME
   }
 
   response[2] = 1; // number of parameters
@@ -193,7 +197,7 @@ int setApNet(const uint8_t command[], uint8_t response[])
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
 
-  if (WiFi.beginAP(ssid, channel) != WL_AP_FAILED) {
+  if (WiFi.softAP(ssid, nullptr, channel)) {
     response[4] = 1;
   } else {
     response[4] = 0;
@@ -218,7 +222,7 @@ int setApPassPhrase(const uint8_t command[], uint8_t response[])
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
 
-  if (WiFi.beginAP(ssid, pass, channel) != WL_AP_FAILED) {
+  if (WiFi.softAP(ssid, pass, channel)) {
     response[4] = 1;
   } else {
     response[4] = 0;
@@ -274,11 +278,11 @@ int getDNSconfig(const uint8_t command[], uint8_t response[])
 
 int getReasonCode(const uint8_t command[], uint8_t response[])
 {
-  uint8_t reasonCode = WiFi.reasonCode();
+  // uint8_t reasonCode = WiFi.reasonCode(); // FIXME
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
-  response[4] = reasonCode;
+  // response[4] = reasonCode; // FIXME
 
   return 6;
 }
@@ -331,7 +335,7 @@ int getMACaddr(const uint8_t command[], uint8_t response[])
 int getCurrSSID(const uint8_t command[], uint8_t response[])
 {
   // ssid
-  const char* ssid = WiFi.SSID();
+  const char* ssid = WiFi.SSID().c_str();
   uint8_t ssidLen = strlen(ssid);
 
   response[2] = 1; // number of parameters
@@ -344,14 +348,10 @@ int getCurrSSID(const uint8_t command[], uint8_t response[])
 
 int getCurrBSSID(const uint8_t command[], uint8_t response[])
 {
-  uint8_t bssid[6];
-
-  WiFi.BSSID(bssid);
-
   response[2] = 1; // number of parameters
   response[3] = 6; // parameter 1 length
 
-  memcpy(&response[4], bssid, sizeof(bssid));
+  memcpy(&response[4], WiFi.BSSID(), 6);
 
   return 11;
 }
@@ -370,11 +370,11 @@ int getCurrRSSI(const uint8_t command[], uint8_t response[])
 
 int getCurrEnct(const uint8_t command[], uint8_t response[])
 {
-  uint8_t encryptionType = WiFi.encryptionType();
+  // uint8_t encryptionType = WiFi.encryptionType(); // FIXME
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
-  response[4] = encryptionType;
+  // response[4] = encryptionType; // FIXME
 
   return 6;
 }
@@ -387,7 +387,7 @@ int scanNetworks(const uint8_t command[], uint8_t response[])
   response[2] = num;
 
   for (int i = 0; i < num; i++) {
-    const char* ssid = WiFi.SSID(i);
+    const char* ssid = WiFi.SSID(i).c_str();
     int ssidLen = strlen(ssid);
 
     response[responseLength++] = ssidLen;
@@ -422,7 +422,8 @@ int startServerTcp(const uint8_t command[], uint8_t response[])
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
 
-  if (type == 0x00 && tcpServers[socket].begin(port)) {
+  if (type == 0x00) {
+    tcpServers[socket].begin(port);
     socketTypes[socket] = 0x00;
     response[4] = 1;
   } else if (type == 0x01 && udps[socket].begin(port)) {
@@ -814,7 +815,7 @@ int reqHostByName(const uint8_t command[], uint8_t response[])
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
 
-  resolvedHostname = /*IPAddress(255, 255, 255, 255)*/0xffffffff;
+  resolvedHostname = IPAddress(255, 255, 255, 255);
   if (WiFi.hostByName(host, resolvedHostname)) {
     response[4] = 1;
   } else {
@@ -828,7 +829,9 @@ int getHostByName(const uint8_t command[], uint8_t response[])
 {
   response[2] = 1; // number of parameters
   response[3] = 4; // parameter 1 length
-  memcpy(&response[4], &resolvedHostname, sizeof(resolvedHostname));
+
+  uint32_t addr = resolvedHostname;
+  memcpy(&response[4], &addr, sizeof(addr));
 
   return 9;
 }
@@ -903,7 +906,15 @@ int getRemoteData(const uint8_t command[], uint8_t response[])
 
 int getTime(const uint8_t command[], uint8_t response[])
 {
-  unsigned long now = WiFi.getTime();
+  time_t now = 0; // FIXME check correct size\
+
+  do {
+    time(&now);
+
+    if (now < 946684800) {
+      now = 0;
+    }
+  } while (now == 0);
 
   response[2] = 1; // number of parameters
   response[3] = sizeof(now); // parameter 1 length
@@ -917,7 +928,7 @@ int getIdxBSSID(const uint8_t command[], uint8_t response[])
 {
   uint8_t bssid[6];
 
-  WiFi.BSSID(command[4], bssid);
+  // WiFi.BSSID(command[4], bssid); // FIXME
 
   response[2] = 1; // number of parameters
   response[3] = 6; // parameter 1 length
@@ -1005,7 +1016,7 @@ int setEnt(const uint8_t command[], uint8_t response[])
     rootCA = (const char*)commandPtr;
     commandPtr += rootCALen;
 
-    WiFi.beginEnterprise(ssid, username, password, identity, rootCA);
+    WiFi.begin(ssid, WPA2_AUTH_PEAP, identity, username, password, rootCA); // TODO checkme
   } else {
     // EAP-TLS
     const char* cert;
@@ -1047,7 +1058,7 @@ int setEnt(const uint8_t command[], uint8_t response[])
     rootCA = (const char*)commandPtr;
     commandPtr += rootCALen;
 
-    WiFi.beginEnterpriseTLS(ssid, cert, key, identity, rootCA);
+    WiFi.begin(ssid, WPA2_AUTH_TTLS, nullptr, nullptr, identity, rootCA, cert, key); // TODO checkme
   }
 
   response[2] = 1; // number of parameters
@@ -1144,7 +1155,7 @@ int ping(const uint8_t command[], uint8_t response[])
   memcpy(&ip, &command[4], sizeof(ip));
   ttl = command[9];
 
-  result = WiFi.ping(ip, ttl);
+  // result = WiFi.ping(ip, ttl); // FIXME
 
   response[2] = 1; // number of parameters
   response[3] = sizeof(result); // parameter 1 length
@@ -1651,7 +1662,7 @@ int socket_close(const uint8_t command[], uint8_t response[])
   uint8_t sock = command[4];
 
   errno = 0;
-  int ret = lwip_close_r(sock);
+  int ret = lwip_close(sock);
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -1690,7 +1701,7 @@ int socket_bind(const uint8_t command[], uint8_t response[])
   addr.sin_port = port;
 
   errno = 0;
-  int ret = lwip_bind_r(sock, (struct sockaddr*) &addr, sizeof(addr));
+  int ret = lwip_bind(sock, (struct sockaddr*) &addr, sizeof(addr));
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -1711,7 +1722,7 @@ int socket_listen(const uint8_t command[], uint8_t response[])
   uint8_t backlog = command[6];
 
   errno = 0;
-  int ret = lwip_listen_r(sock, backlog);
+  int ret = lwip_listen(sock, backlog);
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -1732,7 +1743,7 @@ int socket_accept(const uint8_t command[], uint8_t response[])
   socklen_t addr_len = sizeof(addr);
 
   errno = 0;
-  int8_t ret = lwip_accept_r(sock, (struct sockaddr *) &addr, &addr_len);
+  int8_t ret = lwip_accept(sock, (struct sockaddr *) &addr, &addr_len);
 
   response[2] = 3; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -1773,7 +1784,7 @@ int socket_connect(const uint8_t command[], uint8_t response[])
   addr.sin_port = port;
 
   errno = 0;
-  int ret = lwip_connect_r(sock, (struct sockaddr*)&addr, sizeof(addr));
+  int ret = lwip_connect(sock, (struct sockaddr*)&addr, sizeof(addr));
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -1794,7 +1805,7 @@ int socket_send(const uint8_t command[], uint8_t response[])
   uint16_t size = lwip_ntohs(*((uint16_t *) &command[6]));
 
   errno = 0;
-  int16_t ret = lwip_send_r(sock, &command[8], size, 0);
+  int16_t ret = lwip_send(sock, &command[8], size, 0);
   ret = (ret < 0) ? 0 : ret;
 
   response[2] = 1; // number of parameters
@@ -1818,7 +1829,7 @@ int socket_recv(const uint8_t command[], uint8_t response[])
   size = LWIP_MIN(size, (SPI_MAX_DMA_LEN-16));
 
   errno = 0;
-  int16_t ret = lwip_recv_r(sock, &response[5], size, 0);
+  int16_t ret = lwip_recv(sock, &response[5], size, 0);
   ret = (ret < 0) ? 0 : ret;
 
   response[2] = 1; // number of parameters
@@ -1853,7 +1864,7 @@ int socket_sendto(const uint8_t command[], uint8_t response[])
   addr.sin_port = port;
 
   errno = 0;
-  int16_t ret = lwip_sendto_r(sock, &command[18], size, 0, (struct sockaddr*)&addr, sizeof(addr));
+  int16_t ret = lwip_sendto(sock, &command[18], size, 0, (struct sockaddr*)&addr, sizeof(addr));
   ret = (ret < 0) ? 0 : ret;
 
   response[2] = 1; // number of parameters
@@ -1879,7 +1890,7 @@ int socket_recvfrom(const uint8_t command[], uint8_t response[])
   socklen_t addr_len = sizeof(addr);
 
   errno = 0;
-  int16_t ret = lwip_recvfrom_r(sock, &response[15], size, 0, (struct sockaddr *) &addr, &addr_len);
+  int16_t ret = lwip_recvfrom(sock, &response[15], size, 0, (struct sockaddr *) &addr, &addr_len);
   ret = (ret < 0) ? 0 : ret;
 
   response[2] = 3; // number of parameters
@@ -1920,7 +1931,7 @@ int socket_ioctl(const uint8_t command[], uint8_t response[])
   memcpy(argval, &command[11], size);
 
   errno = 0;
-  int ret = lwip_ioctl_r(sock, cmd, argval);
+  int ret = lwip_ioctl(sock, cmd, argval);
   if (ret == -1) {
       size = 0;
   }
@@ -2004,7 +2015,7 @@ int socket_setsockopt(const uint8_t command[], uint8_t response[])
   memcpy(&optval, &command[11], optlen);
 
   errno = 0;
-  int ret = lwip_setsockopt_r(sock, SOL_SOCKET, optname, optval, optlen);
+  int ret = lwip_setsockopt(sock, SOL_SOCKET, optname, optval, optlen);
 
   response[2] = 1; // number of parameters
   response[3] = 1; // parameter 1 length
@@ -2029,7 +2040,7 @@ int socket_getsockopt(const uint8_t command[], uint8_t response[])
   uint8_t optval[LWIP_SETGETSOCKOPT_MAXOPTLEN];
 
   errno = 0;
-  int ret = lwip_getsockopt_r(sock, SOL_SOCKET, optname, optval, &optlen);
+  int ret = lwip_getsockopt(sock, SOL_SOCKET, optname, optval, &optlen);
   if (ret == -1) {
       optlen = 0;
   }
@@ -2131,8 +2142,8 @@ void CommandHandlerClass::begin()
 
   _updateGpio0PinSemaphore = xSemaphoreCreateCounting(2, 0);
 
-  WiFi.onReceive(CommandHandlerClass::onWiFiReceive);
-  WiFi.onDisconnect(CommandHandlerClass::onWiFiDisconnect);
+  // WiFi.onEvent(CommandHandlerClass::onWiFiReceive); // TODO check this is not needed
+  WiFi.onEvent(CommandHandlerClass::onWiFiDisconnect, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
   xTaskCreatePinnedToCore(CommandHandlerClass::gpio0Updater, "gpio0Updater", 8192, NULL, 1, NULL, 1);
 }
@@ -2193,12 +2204,12 @@ void CommandHandlerClass::updateGpio0Pin()
       }
     }
 
-    if (socketTypes[i] == 0x01 && udps[i] && (udps[i].available() || udps[i].parsePacket())) {
+    if (socketTypes[i] == 0x01 && (udps[i].available() || udps[i].parsePacket())) {
       available = 1;
       break;
     }
 
-    if (socketTypes[i] == 0x02 && tlsClients[i] && tlsClients[i].connected() && tlsClients[i].available()) {
+    if (socketTypes[i] == 0x02 && tlsClients[i].connected() && tlsClients[i].available()) {
       available = 1;
       break;
     }
@@ -2228,7 +2239,7 @@ void CommandHandlerClass::handleWiFiReceive()
   xSemaphoreGiveFromISR(_updateGpio0PinSemaphore, NULL);
 }
 
-void CommandHandlerClass::onWiFiDisconnect()
+void CommandHandlerClass::onWiFiDisconnect(arduino_event_id_t ev)
 {
   CommandHandler.handleWiFiDisconnect();
 }

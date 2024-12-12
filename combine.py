@@ -2,11 +2,11 @@
 
 import sys;
 
-booloaderData = open("build/bootloader/bootloader.bin", "rb").read()
-partitionData = open("build/partitions.bin", "rb").read()
+booloaderData = open("ninafw/build/esp32-test.arduino-esp32.nina_w10/ninafw.ino.bootloader.bin", "rb").read()
+partitionData = open("ninafw/build/esp32-test.arduino-esp32.nina_w10/ninafw.ino.partitions.bin", "rb").read()
 phyData = open("data/phy.bin", "rb").read()
 certsData = open("data/roots.pem", "rb").read()
-appData = open("build/nina-fw.bin", "rb").read()
+appData = open("ninafw/build/esp32-test.arduino-esp32.nina_w10/ninafw.ino.bin", "rb").read()
 
 # calculate the output binary size, app offset 
 outputSize = 0x30000 + len(appData)

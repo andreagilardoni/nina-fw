@@ -1,0 +1,3 @@
+[submodule "arduino/arduino-esp32"]
+	path = arduino/hardware/esp32-test/arduino-esp32
+	url = git@github.com:arduino/arduino-esp32.git

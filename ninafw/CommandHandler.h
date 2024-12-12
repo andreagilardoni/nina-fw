@@ -17,24 +17,34 @@
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
+#ifndef COMMAND_HANDLER_H
+#define COMMAND_HANDLER_H
 
-#define ARDUINO_MAIN
-#include "Arduino.h"
+#include <stdint.h>
 
-void arduino_main(void*) {
-  init();
+class CommandHandlerClass {
+public:
+  CommandHandlerClass();
 
-  setup();
+  void begin();
+  int handle(const uint8_t command[], uint8_t response[]);
 
-  while (1) {
-    loop();
-  }
-}
+private:
+  static void gpio0Updater(void*);
+  void updateGpio0Pin();
 
-extern "C" {
-  void app_main() {
-    xTaskCreatePinnedToCore(arduino_main, "arduino", 8192, NULL, 1, NULL, 1);
-  }
-}
+  static void onWiFiReceive();
+  void handleWiFiReceive();
+
+  static void onWiFiDisconnect(arduino_event_id_t ev);
+  void handleWiFiDisconnect();
+
+private:
+  SemaphoreHandle_t _updateGpio0PinSemaphore;
+};
+
+extern CommandHandlerClass CommandHandler;
+
+extern "C" int downloadAndSaveFile(char * url, FILE * f, const char * cert_pem);
+
+#endif
